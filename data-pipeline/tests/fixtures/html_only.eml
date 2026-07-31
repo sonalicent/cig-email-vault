@@ -1,0 +1,9 @@
+From: Dave HTML <dave@example.com>
+To: Team <team@example.com>
+Subject: HTML only message
+Date: Mon, 27 Jul 2026 11:00:00 +0000
+Message-ID: <html-001@example.com>
+Content-Type: text/html; charset="utf-8"
+MIME-Version: 1.0
+
+<html><body><p>Hello <b>team</b>,</p><p>See the <a href="http://example.com">link</a> for details.</p></body></html>

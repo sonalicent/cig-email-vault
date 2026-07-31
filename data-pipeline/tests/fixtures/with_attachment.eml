@@ -1,0 +1,29 @@
+From: Eve Attach <eve@example.com>
+To: Team <team@example.com>
+Subject: Report attached
+Date: Mon, 27 Jul 2026 12:00:00 +0000
+Message-ID: <att-001@example.com>
+Content-Type: multipart/mixed; boundary="MIXEDBOUNDARY"
+MIME-Version: 1.0
+
+--MIXEDBOUNDARY
+Content-Type: text/plain; charset="utf-8"
+
+Please find the report attached.
+
+--MIXEDBOUNDARY
+Content-Type: text/plain; name="report.txt"
+Content-Disposition: attachment; filename="report.txt"
+
+Line one of report
+Line two of report
+
+--MIXEDBOUNDARY
+Content-Type: image/png; name="image001.png"
+Content-Disposition: inline; filename="image001.png"
+Content-ID: <image001>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGMAAAACAAHiIbwzAAAAAElFTkSuQmCC
+
+--MIXEDBOUNDARY--

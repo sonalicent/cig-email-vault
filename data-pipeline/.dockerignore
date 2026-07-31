@@ -1,0 +1,20 @@
+# Local environments and installed packages
+.venv/
+venv/
+*.egg-info/
+
+# Generated build and CDK output
+cdk.out/
+infra/cdk/cdk.out/
+
+# Python caches and test tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration and source control metadata
+.env
+.env.*
+.git/
+.gitignore

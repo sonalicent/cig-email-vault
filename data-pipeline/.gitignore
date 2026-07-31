@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+src/*.egg-info/
+
+# Local pytest output
+pytest_out.txt
+
+# Local environment files
+.env
+.env.*
+.python-version
+
+# CDK
+cdk.out/
+infra/cdk/.venv/
+infra/cdk/cdk.out/

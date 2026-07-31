@@ -1,0 +1,17 @@
+{
+  "app": "python app.py",
+  "context": {
+    "sourceBucketName": "be-cig-vault-ds-raw",
+    "inputPrefix": "emails/",
+    "outputPrefix": "emails-extracted/",
+    "dedupTableName": "cig-vault-email-dedup",
+    "queueName": "cig-vault-eml-ingest",
+    "dlqName": "cig-vault-eml-ingest-dlq",
+    "metricsNamespace": "CigVault/EmailPipeline",
+    "maxAttachmentBytes": "26214400",
+    "lambdaMemoryMb": 1024,
+    "lambdaTimeoutSeconds": 120,
+    "lambdaBatchSize": 5,
+    "lambdaMaxBatchingWindowSeconds": 30
+  }
+}
