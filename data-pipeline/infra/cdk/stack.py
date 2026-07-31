@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -211,9 +213,15 @@ class EmailPipelineStack(Stack):
                     ignored.add(name)
             return ignored
 
+        def _on_rm_error(func, path, _exc) -> None:
+            # Windows raises WinError 5 (Access denied) on read-only files/dirs;
+            # clear the read-only attribute and retry the delete.
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+
         stage_root = Path(tempfile.gettempdir()) / "cig-email-pipeline-docker-context"
         if stage_root.exists():
-            shutil.rmtree(stage_root)
+            shutil.rmtree(stage_root, onexc=_on_rm_error)
         shutil.copytree(source, stage_root, ignore=_ignore)
         return str(stage_root)
 

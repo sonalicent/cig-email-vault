@@ -22,8 +22,10 @@ from .formatter import (
     attachment_metadata,
     content_key,
     email_metadata,
+    format_timestamp,
     render_attachment_markdown,
     render_email_markdown,
+    thread_id,
 )
 from .metrics import (
     ATTACHMENTS_EXTRACTED,
@@ -96,7 +98,11 @@ def process_object(
             unit.message_id, unit.from_, unit.date, unit.subject, unit.body
         )
         hash8 = _short_hash(identity)
-        out_key = content_key(config.content_prefix, date, unit.subject, hash8)
+        thread = thread_id(unit.subject)
+        timestamp = format_timestamp(unit.date)
+        out_key = content_key(
+            config.content_prefix, date, thread, timestamp, unit.subject, hash8
+        )
 
         claimed = dedup.claim(
             identity,
@@ -112,10 +118,14 @@ def process_object(
             metrics.increment(DEDUP_SKIPS)
             continue
 
+        # MIME-level attachments belong to the top email. The wrapper text unit is
+        # dropped when empty (common for pure forwards), so associate attachments with
+        # the first emitted unit (order == 0) rather than only a surviving wrapper.
         refs = []
-        if unit.is_wrapper:
+        if unit.order == 0:
             refs = _process_attachments(
-                parsed, key, date, eml_stem, s3=s3, metrics=metrics, config=config
+                parsed, key, date, eml_stem, thread, timestamp,
+                s3=s3, metrics=metrics, config=config,
             )
 
         s3.put_markdown(out_key, render_email_markdown(unit))
@@ -131,6 +141,8 @@ def _process_attachments(
     source_key: str,
     date: str,
     eml_stem: str,
+    thread: str,
+    timestamp: str,
     *,
     s3: S3IO,
     metrics: Metrics,
@@ -151,7 +163,9 @@ def _process_attachments(
         if result is None or not result.markdown.strip():
             continue
 
-        out_key = attachment_key(config.attachments_prefix, date, eml_stem, attachment.filename)
+        out_key = attachment_key(
+            config.attachments_prefix, date, thread, timestamp, eml_stem, attachment.filename
+        )
         s3.put_markdown(out_key, render_attachment_markdown(attachment, source_key, result.markdown))
         s3.put_json(
             _json_key(out_key),

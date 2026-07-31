@@ -67,9 +67,19 @@ flowchart LR
 
 ## End-to-end flow
 
-For every `.eml` object, the handler runs the same six stages. The wrapper unit is the only
-one that "owns" the attachments, so attachments are written once even when the same email
-recurs in later forwards.
+For every `.eml` object, the handler runs the same six stages. Attachments belong to the
+first emitted unit (`order == 0`), so they are written once even when the same email
+recurs in later forwards — this holds even when the wrapper text unit was dropped because
+it was empty (common for pure forwards).
+
+A forwarded thread is still just **one** `.eml` file with **one** MIME container: the older
+emails shown below are quoted *text*, not separate messages, so their attachments (if any)
+are flattened into the single pile of attachment parts at the envelope level. We therefore
+extract every attachment once and attach them all to the top email (`order == 0`). If a
+thread carries files that originally came from several older emails, they are all extracted
+(nothing lost or duplicated) but listed under the top email — the input contains no marker
+telling us which quoted email a given file came from, so per-email ownership is not
+preserved (see D28).
 
 ```mermaid
 sequenceDiagram
@@ -93,7 +103,7 @@ sequenceDiagram
         H->>D: claim(identity)
         alt first writer
             D-->>H: true
-            opt wrapper unit
+            opt first unit (order == 0)
                 H->>X: extract(attachment)
                 X-->>H: Markdown (+ JSON)
                 H->>S3: put attachment .md / .json
@@ -136,20 +146,29 @@ without any locking or single-threading.
 
 ## Output layout
 
-Outputs mirror the input's date folder so the results are easy to browse and crawl.
+Outputs mirror the input's date folder, and within each date the filenames are prefixed
+with a thread id + timestamp (D27) so every email of a conversation groups together and
+sorts chronologically.
 
 ```
 emails-extracted/
-  content/<date>/<subject-slug>__<hash8>.md      # one file per email unit
-  content/<date>/<subject-slug>__<hash8>.json     # metadata sidecar
-  attachments/<date>/<eml-stem>__<file-slug>.md   # one file per attachment
-  attachments/<date>/<eml-stem>__<file-slug>.json # metadata (+ tabular data for xlsx)
+  content/<date>/<thread8>__<timestamp>__<subject-slug>__<hash8>.md      # one file per email unit
+  content/<date>/<thread8>__<timestamp>__<subject-slug>__<hash8>.json     # metadata sidecar
+  attachments/<date>/<thread8>__<timestamp>__<eml-stem>__<file-slug>.md   # one file per attachment
+  attachments/<date>/<thread8>__<timestamp>__<eml-stem>__<file-slug>.json # metadata (+ tabular data for xlsx)
 ```
 
 - `<date>` is parsed from the source key (`YYYY-MM-DD`), or `undated` if none is found.
+- `<thread8>` is the first 8 hex chars of a SHA-256 over the reply/forward-normalized
+  subject (leading `Re:`/`Fw:`/`Fwd:` etc. stripped), so a whole thread shares one prefix.
+- `<timestamp>` is the email's send time as sortable UTC `YYYYMMDDThhmmssZ`, or
+  `00000000T000000Z` when the date is missing/unparseable.
 - `<hash8>` is the first 8 hex chars of the identity hash, keeping filenames unique.
+- Attachments reuse their source email's `<thread8>` and `<timestamp>`.
 - Slugs are lowercase and URL-safe; opaque Outlook EntryID filenames never reach a key.
 - The email JSON lists its attachment references; xlsx attachments also embed row data.
+- Retrieve a full thread by listing a date folder filtered on the `<thread8>__` prefix;
+  a thread spanning multiple days is grouped within each day's folder.
 
 ## Error handling and resilience
 
@@ -200,6 +219,6 @@ batching window. See [stack.py](../infra/cdk/stack.py).
 ## Related documents
 
 - [components.md](components.md) — module-by-module reference.
-- [design-decisions.md](design-decisions.md) — the D1–D26 decision record.
+- [design-decisions.md](design-decisions.md) — the D1–D27 decision record.
 - [decision-confirmations.md](decision-confirmations.md) — options offered vs. selected.
 - [verification-checklist.md](verification-checklist.md) — end-to-end test checklist.

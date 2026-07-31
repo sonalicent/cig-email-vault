@@ -108,18 +108,18 @@ Format: each decision = Context → Decision → Rationale → Alternatives → 
 - Excluded: OCR of scanned/image PDFs, embedded-image extraction (out of scope now).
 - Status: Decided (planning).
 
-## D12. Output layout & naming (updated: date-partitioned, Markdown + JSON)
+## D12. Output layout & naming (updated: thread + timestamp prefixed, date-partitioned, Markdown + JSON)
 - Decision:
-  - Individual emails → `emails-extracted/content/{yyyy-mm-dd}/{subject-slug}__{hash8}.md`
+  - Individual emails → `emails-extracted/content/{yyyy-mm-dd}/{thread8}__{timestamp}__{subject-slug}__{hash8}.md`
     (+ `.json` sidecar: headers/metadata + attachment refs).
-  - Attachments → `emails-extracted/attachments/{yyyy-mm-dd}/{eml-stem}__{attachment-slug}.md`
+  - Attachments → `emails-extracted/attachments/{yyyy-mm-dd}/{thread8}__{timestamp}__{eml-stem}__{attachment-slug}.md`
     (xlsx also emits `.json` rows).
   - **Mirror input date partitioning** rather than a flat directory. Global dedup
     enforced by DynamoDB (D6), not by flat identity-keyed filenames.
 - Rationale: Date partitioning aids browsing/crawling; Markdown preserves structure
   (tables) vs. flat `.txt`; JSON sidecar carries structured metadata for downstream.
 - Alternatives: flat `.txt` (superseded); per-thread folders (rejected).
-- Status: Confirmed by user (revised).
+- Status: Confirmed by user (revised). Thread/timestamp prefix added in D27.
 
 ## D13. Lambda resources
 - Decision: Memory ~1024MB, timeout ~120s (tune after profiling).
@@ -229,6 +229,55 @@ Format: each decision = Context → Decision → Rationale → Alternatives → 
 - Deferred to productionization: X-Ray, OpenSearch, CodePipeline/CodeBuild, ECR lifecycle.
 - Status: Confirmed by user (metrics now; rest deferred).
 
+## D27. Thread id + timestamp key prefix (refines D12)
+- Context: Emails of one conversation were scattered by subject slug within a date folder,
+  making it hard to pull a whole thread from S3.
+- Decision: Prefix every output filename with `{thread8}__{timestamp}__` ahead of the
+  existing name. `thread8` = first 8 hex of SHA-256 over the reply/forward-normalized
+  subject (leading `Re:`/`Fw:`/`Fwd:`/`Aw:`/`Wg:`/`Sv:`/`Vs:` stripped, whitespace
+  collapsed, lowercased). `timestamp` = the email's send time as sortable UTC
+  `YYYYMMDDThhmmssZ`, falling back to `00000000T000000Z` when missing/unparseable.
+  Attachments reuse their wrapper email's thread id and timestamp.
+- Rationale: S3 lists keys lexicographically, so a shared thread prefix groups a whole
+  conversation and the timestamp orders it chronologically. Subject-based threading works
+  for both the wrapper unit and quoted units (which carry no `Message-ID`/`References`).
+- Alternatives: `References`/`In-Reply-To` header threading (rejected: absent on quoted
+  units); thread-as-folder or thread-then-date layout (rejected: kept date partitioning
+  from D23, so thread id prefixes the filename within the date folder).
+- Trade-off: a thread spanning multiple days is grouped within each day's folder but split
+  across day folders; retrieve the full thread via a recursive list filtered on `{thread8}__`.
+- Status: Confirmed by user.
+
+## D28. Attachments belong to the top email only (no per-quoted-email ownership)
+- Context: A forwarded thread is a *single* `.eml` file. Inside it there is exactly one MIME
+  container: the real headers, the body, and the attachment parts. The older emails you see
+  "below" in a forward are **not** separate files — they are just quoted *text* pasted into
+  the body. So even if a thread visually shows several older emails that each "had"
+  attachments, the actual file only carries one flat pile of attachment parts at the top
+  (the envelope) level. Outlook flattens everything up there when it builds the forward;
+  there is no marker saying "this PDF came from the 2nd email down".
+- Decision: Extract every real attachment part once and associate all of them with the
+  **first emitted email unit** (`order == 0`) — the newest/top email. We do **not** try to
+  guess which quoted older email an attachment originally belonged to.
+- What this means in practice:
+  - If a forwarded thread carries attachments that originally came from several different
+    older emails, all of them are still extracted (nothing is lost or duplicated), but they
+    are all listed under the top email's outputs and metadata.
+  - Provenance — "which specific quoted email did this file come from" — is **not**
+    preserved, because the source `.eml` simply does not contain that link.
+  - Empty-wrapper pure forwards are handled correctly: since the top text unit is dropped
+    when empty, "first emitted unit" (`order == 0`) may be the first *quoted* email, and the
+    attachments attach there rather than being silently skipped (see also the handler gate
+    on `unit.order == 0`, not `unit.is_wrapper`).
+- Rationale: The linkage we'd need does not exist in the input, so any per-email attribution
+  would be a guess (e.g. filename-matching against a quoted segment's text). Attributing all
+  attachments to the top email is deterministic, lossless, and matches how the email was
+  actually delivered.
+- Alternatives: Heuristic filename-matching to a quoted segment (rejected: unreliable, no
+  deterministic signal in a flattened forward); dropping attachments on quoted-only forwards
+  (rejected: that was the earlier bug — attachments must never be silently lost).
+- Status: Implemented.
+
 ---
 
 ## Open items to revisit at implementation
@@ -238,7 +287,9 @@ Format: each decision = Context → Decision → Rationale → Alternatives → 
 - Compute revisit: move to Fargate/Batch if large-attachment runs approach Lambda limits.
 - Productionization: CI-CD pipeline, X-Ray/OpenSearch, KMS + parser hardening (D25).
 
-## Implementation scope note (this pass)
-- This pass implements Phases 0–2 + tests: the Python package (parsing, extraction,
-  formatting, dedup, handler) and unit tests with synthetic fixtures.
-- Deferred to a later pass: `infra/cdk/` (D5, D21) and `scripts/backfill.py`.
+## Implementation scope note
+- The Python package (parsing, extraction, formatting, dedup, handler) and its unit-test
+  suite with synthetic fixtures are implemented.
+- `infra/cdk/` (D5, D21) and `scripts/backfill.py` are now implemented as well, alongside
+  maintenance helpers (`scripts/clear_dedup.py`, `scripts/clear_extracted.py`).
+- Deferred to a later pass: the security hardening in D25.

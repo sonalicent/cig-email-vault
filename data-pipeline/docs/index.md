@@ -14,7 +14,7 @@ the [README](../README.md), then use the guides below.
 
 | Document | What it covers |
 |----------|----------------|
-| [design-decisions.md](design-decisions.md) | The D1–D26 decision record: context, decision, rationale, and alternatives for each choice. |
+| [design-decisions.md](design-decisions.md) | The D1–D27 decision record: context, decision, rationale, and alternatives for each choice. |
 | [decision-confirmations.md](decision-confirmations.md) | Q&A of the options offered versus the ones selected. |
 | [verification-checklist.md](verification-checklist.md) | End-to-end checklist for validating the pipeline. |
 
