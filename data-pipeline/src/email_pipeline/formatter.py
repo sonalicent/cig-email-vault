@@ -1,7 +1,8 @@
 """Render email units and attachments to Markdown + JSON, and build output S3 keys.
 
 Output layout (D12, D23) — keys are prefixed with a thread id + timestamp so every email
-of a thread groups together within a date partition and sorts chronologically:
+of a thread groups together within a date partition and sorts chronologically. The date
+partition is the top email's own send date (from its ``Date`` header, UTC-normalized):
 - Emails      → ``emails-extracted/content/{yyyy-mm-dd}/{thread8}__{timestamp}__{subject-slug}__{hash8}.md`` (+ ``.json``)
 - Attachments → ``emails-extracted/attachments/{yyyy-mm-dd}/{thread8}__{timestamp}__{eml-stem}__{attachment-slug}.md``
 
@@ -15,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 from .models import Attachment, EmailUnit
@@ -51,18 +52,35 @@ def thread_id(subject: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:8]
 
 
+def _parse_rfc5322_utc(date: str) -> datetime | None:
+    """Parse an RFC 5322 date to a UTC-normalized ``datetime``, or ``None`` on failure."""
+    if not date:
+        return None
+    try:
+        parsed = parsedate_to_datetime(date)
+    except (TypeError, ValueError):
+        return None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed
+
+
 def format_timestamp(date: str) -> str:
     """Parse an RFC 5322 date into sortable ``YYYYMMDDThhmmssZ`` UTC, or a zero fallback."""
-    if date:
-        try:
-            parsed = parsedate_to_datetime(date)
-        except (TypeError, ValueError):
-            parsed = None
-        if parsed is not None:
-            if parsed.tzinfo is not None:
-                parsed = parsed.astimezone(timezone.utc)
-            return parsed.strftime("%Y%m%dT%H%M%SZ")
+    parsed = _parse_rfc5322_utc(date)
+    if parsed is not None:
+        return parsed.strftime("%Y%m%dT%H%M%SZ")
     return _FALLBACK_TIMESTAMP
+
+
+def format_date(date: str) -> str | None:
+    """Parse an RFC 5322 date into a UTC ``YYYY-MM-DD`` folder name, or ``None`` on failure."""
+    parsed = _parse_rfc5322_utc(date)
+    if parsed is not None:
+        return parsed.strftime("%Y-%m-%d")
+    return None
 
 
 def content_key(prefix: str, date: str, thread: str, timestamp: str, subject: str, hash8: str) -> str:

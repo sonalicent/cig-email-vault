@@ -95,6 +95,28 @@ def test_process_direct_email_writes_one_content_pair():
     assert "Water demand" in s3.puts[md_keys[0]] or "water demand" in s3.puts[md_keys[0]].lower()
 
 
+def test_date_partition_uses_header_date_over_key():
+    # Key encodes 2026-07-27 but the email's own Date header is 2026-07-15.
+    key = "emails/2026-07-27/earlier.eml"
+    s3 = FakeS3({key: read_fixture("header_date_differs.eml")})
+    _run(key, s3, FakeDedup())
+
+    md_keys = [k for k in s3.puts if k.endswith(".md")]
+    assert len(md_keys) == 1
+    assert md_keys[0].startswith("emails-extracted/content/2026-07-15/")
+
+
+def test_date_partition_falls_back_to_key_when_header_date_missing():
+    # No Date header -> fall back to the date encoded in the input key.
+    key = "emails/2026-07-27/no-date.eml"
+    s3 = FakeS3({key: read_fixture("no_date.eml")})
+    _run(key, s3, FakeDedup())
+
+    md_keys = [k for k in s3.puts if k.endswith(".md")]
+    assert len(md_keys) == 1
+    assert md_keys[0].startswith("emails-extracted/content/2026-07-27/")
+
+
 def test_process_forward_splits_into_two_emails():
     key = "emails/2026-07-27/fwd.eml"
     s3 = FakeS3({key: read_fixture("forward_plain.eml")})

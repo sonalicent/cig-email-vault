@@ -2,6 +2,7 @@ from email_pipeline.formatter import (
     attachment_key,
     content_key,
     email_metadata,
+    format_date,
     format_timestamp,
     normalize_subject,
     render_attachment_markdown,
@@ -57,6 +58,19 @@ def test_format_timestamp_parses_and_normalizes_to_utc():
     assert format_timestamp("Mon, 27 Jul 2026 06:45:00 -0700") == "20260727T134500Z"
     assert format_timestamp("") == "00000000T000000Z"
     assert format_timestamp("not a date") == "00000000T000000Z"
+
+
+def test_format_date_parses_and_normalizes_to_utc():
+    assert format_date("Mon, 27 Jul 2026 13:45:00 +0000") == "2026-07-27"
+    # A positive offset can roll the UTC date back a day.
+    assert format_date("Mon, 27 Jul 2026 01:00:00 +0200") == "2026-07-26"
+    # A negative offset can roll the UTC date forward a day.
+    assert format_date("Mon, 27 Jul 2026 23:00:00 -0300") == "2026-07-28"
+
+
+def test_format_date_returns_none_for_unusable_input():
+    assert format_date("") is None
+    assert format_date("not a date") is None
 
 
 def test_render_email_markdown_includes_header_block_and_external_marker():

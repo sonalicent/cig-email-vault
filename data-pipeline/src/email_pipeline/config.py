@@ -12,8 +12,8 @@ from dataclasses import dataclass
 # Default S3 bucket that holds both the raw `.eml` inputs and the generated outputs.
 _DEFAULT_BUCKET = "be-cig-vault-ds-raw"
 
-# Input `.eml` objects live under `emails/<date>/`; outputs mirror the date partition
-# under `emails-extracted/`.
+# Input `.eml` objects live under `emails/<date>/`; outputs are partitioned by the email's
+# own send date (D29) under `emails-extracted/`.
 _DEFAULT_INPUT_PREFIX = "emails/"
 _DEFAULT_OUTPUT_PREFIX = "emails-extracted/"
 

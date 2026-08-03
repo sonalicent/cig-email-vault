@@ -101,9 +101,11 @@ stack is already deployed and you only need to verify a running environment.
   verify it (a) parses the SQS `body` as JSON, (b) short-circuits on
   `Event == "s3:TestEvent"` (the S3→SQS test ping), (c) URL-decodes the object key with
   `unquote_plus` (Outlook EntryID filenames contain `+`, `/`, `=`).
-- [ ] `[CODE]` handler.py `_date_from_key` — a key without a `YYYY-MM-DD` segment falls
-  back to `"undated"`. Confirm this is acceptable (outputs land in
-  `emails-extracted/content/undated/`).
+- [ ] `[CODE]` handler.py `process_object` date partition — outputs are partitioned by the
+  email's own send date via `format_date(parsed.date)` (UTC `YYYY-MM-DD` from the envelope
+  `Date` header). Confirm it falls back to `_date_from_key(key)` when the header is missing
+  or unparseable, and that `_date_from_key` in turn falls back to `"undated"` for a key
+  without a `YYYY-MM-DD` segment (outputs land in `emails-extracted/content/undated/`).
 - [ ] `[CODE]` handler.py `process_object` — the order is: download → parse → split →
   per-unit dedup claim → process attachments only for the first emitted unit → write
   outputs. Confirm attachment refs are attached to the **first emitted unit**

@@ -1,0 +1,14 @@
+From: Alice Example <alice@example.com>
+To: Team <team@example.com>
+Subject: Numbers from an earlier day
+Date: Wed, 15 Jul 2026 09:00:00 +0000
+Message-ID: <header-date-001@example.com>
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+
+Hi team,
+
+This email was sent well before it was ingested into the pipeline.
+
+Thanks,
+Alice
