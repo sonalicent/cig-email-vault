@@ -1,0 +1,13 @@
+From: Alice Example <alice@example.com>
+To: Team <team@example.com>
+Subject: Missing date header
+Message-ID: <no-date-001@example.com>
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+
+Hi team,
+
+This email has no Date header, so the pipeline must fall back to the input key.
+
+Thanks,
+Alice

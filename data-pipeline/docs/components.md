@@ -31,12 +31,14 @@ flowchart TD
 ### handler.py
 The Lambda entry point. `handler(event, context)` iterates the SQS records, and for each
 referenced S3 object calls `process_object`, which downloads the `.eml`, parses it, splits
-the thread, and writes outputs for each unique email unit. Failures are isolated per SQS
-message and returned as `batchItemFailures` so only the failing message retries.
+the thread, and writes outputs for each unique email unit. Attachments are processed for
+the first emitted unit (`order == 0`), so they are written once even when the wrapper text
+unit was dropped. Failures are isolated per SQS message and returned as `batchItemFailures`
+so only the failing message retries.
 
 - **Key functions:** `handler`, `process_object`, `_process_attachments`, `_apply_envelope`,
   `_iter_object_keys` (unwraps the S3 event from the SQS body, handles `s3:TestEvent`),
-  `_date_from_key`, `_short_hash`, `_json_key`.
+  `_date_from_key`, `_stem`, `_short_hash`, `_json_key`.
 - **Depends on:** every other module in the package.
 
 ### config.py
@@ -143,10 +145,15 @@ Decodes plain text / CSV / log attachments with an encoding fallback chain
 Renders email units and attachments to Markdown + JSON and builds the output S3 keys.
 
 - **Behavior:** `slugify` makes lowercase, URL-safe slugs (so opaque Outlook EntryIDs never
-  reach a key). `content_key` / `attachment_key` build date-partitioned keys.
+  reach a key). `normalize_subject` strips leading `Re:`/`Fw:`/`Fwd:` (and `Aw:`/`Wg:`/`Sv:`/
+  `Vs:`) prefixes, and `thread_id` hashes that to a stable 8-char id so replies/forwards of
+  one subject share a thread (D27). `format_timestamp` renders an RFC 5322 date as sortable
+  UTC `YYYYMMDDThhmmssZ` (or a zero fallback). `content_key` / `attachment_key` build
+  date-partitioned keys prefixed with `{thread8}__{timestamp}__`.
   `render_email_markdown` emits a heading, an `EXTERNAL EMAIL` marker when flagged, a
   header block, and the body. `render_attachment_markdown` emits a heading and the extracted
-  content. `email_metadata` / `attachment_metadata` build the JSON sidecars.
+  content. `email_metadata` / `attachment_metadata` build the JSON sidecars (each carries a
+  `schema_version`).
 - **Depends on:** `models`.
 
 ### s3_io.py

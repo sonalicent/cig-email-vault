@@ -1,17 +1,30 @@
 """Render email units and attachments to Markdown + JSON, and build output S3 keys.
 
-Output layout (D12, D23):
-- Emails      → ``emails-extracted/content/{yyyy-mm-dd}/{subject-slug}__{hash8}.md`` (+ ``.json``)
-- Attachments → ``emails-extracted/attachments/{yyyy-mm-dd}/{eml-stem}__{attachment-slug}.md``
+Output layout (D12, D23) — keys are prefixed with a thread id + timestamp so every email
+of a thread groups together within a date partition and sorts chronologically. The date
+partition is the top email's own send date (from its ``Date`` header, UTC-normalized):
+- Emails      → ``emails-extracted/content/{yyyy-mm-dd}/{thread8}__{timestamp}__{subject-slug}__{hash8}.md`` (+ ``.json``)
+- Attachments → ``emails-extracted/attachments/{yyyy-mm-dd}/{thread8}__{timestamp}__{eml-stem}__{attachment-slug}.md``
+
+The thread id is a hash of the reply/forward-normalized subject so it is stable across a
+thread and works for both the wrapper unit and quoted units (which carry no Message-ID /
+References headers). ``timestamp`` is the email's send time in sortable ``YYYYMMDDThhmmssZ``
+UTC form.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from .models import Attachment, EmailUnit
 
 _SLUG_STRIP_RE = re.compile(r"[^a-z0-9]+")
+# Leading Re:/Fw:/Fwd: (and common non-English variants) reply/forward markers.
+_REPLY_PREFIX_RE = re.compile(r"^\s*(re|fw|fwd|aw|wg|sv|vs)\s*(\[\d+\])?\s*:\s*", re.IGNORECASE)
+_FALLBACK_TIMESTAMP = "00000000T000000Z"
 _SCHEMA_VERSION = 1
 
 
@@ -23,14 +36,63 @@ def slugify(text: str, max_length: int = 60) -> str:
     return slug[:max_length].strip("-") or "untitled"
 
 
-def content_key(prefix: str, date: str, subject: str, hash8: str) -> str:
-    """Build the S3 key for a per-email Markdown output."""
-    return f"{prefix}{date}/{slugify(subject)}__{hash8}.md"
+def normalize_subject(subject: str) -> str:
+    """Strip leading reply/forward prefixes and normalize whitespace/case for threading."""
+    text = subject or ""
+    prev = None
+    while prev != text:
+        prev = text
+        text = _REPLY_PREFIX_RE.sub("", text, count=1)
+    return " ".join(text.split()).lower()
 
 
-def attachment_key(prefix: str, date: str, eml_stem: str, filename: str) -> str:
-    """Build the S3 key for a per-attachment Markdown output."""
-    return f"{prefix}{date}/{slugify(eml_stem, 40)}__{slugify(filename, 60)}.md"
+def thread_id(subject: str) -> str:
+    """Return a stable 8-char thread id derived from the normalized subject."""
+    normalized = normalize_subject(subject) or "no-subject"
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:8]
+
+
+def _parse_rfc5322_utc(date: str) -> datetime | None:
+    """Parse an RFC 5322 date to a UTC-normalized ``datetime``, or ``None`` on failure."""
+    if not date:
+        return None
+    try:
+        parsed = parsedate_to_datetime(date)
+    except (TypeError, ValueError):
+        return None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed
+
+
+def format_timestamp(date: str) -> str:
+    """Parse an RFC 5322 date into sortable ``YYYYMMDDThhmmssZ`` UTC, or a zero fallback."""
+    parsed = _parse_rfc5322_utc(date)
+    if parsed is not None:
+        return parsed.strftime("%Y%m%dT%H%M%SZ")
+    return _FALLBACK_TIMESTAMP
+
+
+def format_date(date: str) -> str | None:
+    """Parse an RFC 5322 date into a UTC ``YYYY-MM-DD`` folder name, or ``None`` on failure."""
+    parsed = _parse_rfc5322_utc(date)
+    if parsed is not None:
+        return parsed.strftime("%Y-%m-%d")
+    return None
+
+
+def content_key(prefix: str, date: str, thread: str, timestamp: str, subject: str, hash8: str) -> str:
+    """Build the S3 key for a per-email Markdown output (thread + timestamp prefixed)."""
+    return f"{prefix}{date}/{thread}__{timestamp}__{slugify(subject)}__{hash8}.md"
+
+
+def attachment_key(
+    prefix: str, date: str, thread: str, timestamp: str, eml_stem: str, filename: str
+) -> str:
+    """Build the S3 key for a per-attachment Markdown output (thread + timestamp prefixed)."""
+    return f"{prefix}{date}/{thread}__{timestamp}__{slugify(eml_stem, 40)}__{slugify(filename, 60)}.md"
 
 
 def render_email_markdown(unit: EmailUnit) -> str:

@@ -25,4 +25,5 @@ Notes:
 - Planning choices for #2 and #3 differed from the recommended option (chose S3 manifest
   over DynamoDB — later revised to DynamoDB; and CDK over SAM).
 - Full rationale/alternatives for each captured in `design-decisions.md`.
-- Per #7, `infra/cdk/` and `scripts/backfill.py` are deferred to a later pass.
+- Per #7, `infra/cdk/` and `scripts/backfill.py` were originally deferred; both are now
+  implemented.

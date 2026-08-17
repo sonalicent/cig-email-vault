@@ -22,7 +22,9 @@ For each new `.eml` object:
    (inline signature/logo images are skipped). Dispatch by type: pdf → pdfplumber,
    pptx → python-pptx, xlsx → openpyxl, docx → python-docx, txt/csv → decode.
 6. **Write** each email and attachment as Markdown (+ JSON) under date-partitioned
-   `emails-extracted/content/<date>/` and `emails-extracted/attachments/<date>/`.
+   `emails-extracted/content/<date>/` and `emails-extracted/attachments/<date>/`. Filenames
+   are prefixed with `{thread8}__{timestamp}__` so a whole conversation groups together and
+   sorts chronologically.
 
 Trigger path: **S3 → SQS (+ DLQ) → Lambda**.
 
@@ -31,7 +33,8 @@ Trigger path: **S3 → SQS (+ DLQ) → Lambda**.
 - [docs/index.md](docs/index.md) — documentation index.
 - [docs/architecture.md](docs/architecture.md) — concepts, AWS topology, and end-to-end flow.
 - [docs/components.md](docs/components.md) — module-by-module reference.
-- [docs/design-decisions.md](docs/design-decisions.md) — the D1–D26 decision record.
+- [docs/design-decisions.md](docs/design-decisions.md) — the D1–D27 decision record.
+- [docs/verification-checklist.md](docs/verification-checklist.md) — end-to-end verification checklist.
 
 ## Layout
 
@@ -40,11 +43,16 @@ data-pipeline/
   pyproject.toml
   Dockerfile                     # public.ecr.aws/lambda/python:3.12
   docs/
-    design-decisions.md          # D1–D26 ADR record
+    index.md                     # documentation index
+    architecture.md              # concepts, AWS topology, end-to-end flow
+    components.md                # module-by-module reference
+    design-decisions.md          # D1–D27 ADR record
     decision-confirmations.md    # Q&A of options offered vs. selected
+    verification-checklist.md    # end-to-end verification checklist
   src/email_pipeline/
     handler.py                   # Lambda entry: SQS->S3 event -> orchestrate
     config.py                    # bucket/prefixes/table/queue names, env overrides
+    models.py                    # shared dataclasses (Attachment, ParsedEmail, EmailUnit)
     s3_io.py                     # get_object, put_markdown, put_json
     eml_parser.py                # stdlib email: headers, best body, attachment parts
     html_to_md.py                # BeautifulSoup4 + markdownify
@@ -53,8 +61,9 @@ data-pipeline/
     formatter.py                 # render unit -> Markdown (+ JSON metadata)
     metrics.py                   # CloudWatch EMF custom metrics
     extractors/                  # pdf / pptx / xlsx / docx / text dispatch
-   tests/                         # pytest suite + synthetic .eml fixtures
-   infra/cdk/                     # CDK deployment stack
+  tests/                         # pytest suite + synthetic .eml fixtures
+  scripts/                       # backfill.py + maintenance helpers
+  infra/cdk/                     # CDK deployment stack
 ```
 
 ## Configuration (environment variables)
@@ -101,7 +110,18 @@ needed, for example:
 cdk deploy -c sourceBucketName=be-cig-vault-ds-raw -c region=us-west-2
 ```
 
+## Backfill
+
+Existing `emails/<date>/*.eml` objects that predate the S3 notification will not trigger the
+pipeline. Run `scripts/backfill.py` once to enqueue them onto the ingest queue (DynamoDB
+dedup keeps re-runs idempotent):
+
+```powershell
+python scripts/backfill.py --all                 # enqueue everything under emails/
+python scripts/backfill.py --all --dry-run       # list what would be enqueued, send nothing
+python scripts/backfill.py --prefix emails/2026-07-27/   # limit to one date partition
+```
+
 ## Deferred (later pass)
 
-- `scripts/backfill.py` — one-time enqueue of pre-existing `emails/<date>/*.eml`.
 - Security hardening (SSE-KMS, parser sandboxing, in-VPC) per D25.
